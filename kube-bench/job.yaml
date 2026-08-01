@@ -1,0 +1,65 @@
+# Runs kube-bench once against the node it lands on and prints the report
+# to stdout (kubectl logs job/kube-bench).
+#
+# Notes:
+# - hostPID + the read-only host mounts are required for kube-bench to
+#   inspect process arguments and config files. This is a scanner, not a
+#   workload pattern to copy — run it on demand and delete it.
+# - On managed clusters pass the matching benchmark instead of autodetect,
+#   e.g. `--benchmark gke-1.6.0` / `eks-1.5.0` / `aks-1.7`.
+#   See config-notes.md.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kube-bench
+  namespace: kube-bench
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: kube-bench
+    spec:
+      hostPID: true
+      restartPolicy: Never
+      containers:
+        - name: kube-bench
+          image: docker.io/aquasec/kube-bench:v0.8.0
+          command: ["kube-bench"]
+          args: ["run", "--targets", "node"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            readOnlyRootFilesystem: false
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: var-lib-kubelet
+              mountPath: /var/lib/kubelet
+              readOnly: true
+            - name: etc-systemd
+              mountPath: /etc/systemd
+              readOnly: true
+            - name: etc-kubernetes
+              mountPath: /etc/kubernetes
+              readOnly: true
+            - name: usr-bin
+              mountPath: /usr/local/mount-from-host/bin
+              readOnly: true
+      volumes:
+        - name: var-lib-kubelet
+          hostPath:
+            path: /var/lib/kubelet
+        - name: etc-systemd
+          hostPath:
+            path: /etc/systemd
+        - name: etc-kubernetes
+          hostPath:
+            path: /etc/kubernetes
+        - name: usr-bin
+          hostPath:
+            path: /usr/bin
